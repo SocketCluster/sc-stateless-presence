@@ -1,0 +1,18 @@
+{
+  "name": "sc-stateless-presence",
+  "version": "1.0.0",
+  "description": "Stateless presence for SocketCluster",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "socketcluster",
+    "presence"
+  ],
+  "author": "Jonathan Gros-Dubois",
+  "license": "MIT",
+  "dependencies": {
+    "lodash.isempty": "^4.4.0"
+  }
+}

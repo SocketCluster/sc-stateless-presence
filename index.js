@@ -2,10 +2,12 @@ var isEmpty = require('lodash.isempty');
 
 var SCStatelessPresence = function (options) {
   this.options = options || {};
-  this.presenceInterval = this.options.presenceInterval || 5000;
+  this.presenceInterval = this.options.presenceInterval || 10000;
+  this.presenceTimeout = this.options.presenceTimeout || Math.round(this.presenceInterval * 1.3);
 
   this.worker = options.worker;
-  this.exchange = this.worker.scServer.exchange;
+  this.scServer = this.worker.scServer;
+  this.exchange = this.scServer.exchange;
   this.workerSubscribers = {};
 
   this._setupPresenceMiddleware();
@@ -16,6 +18,10 @@ SCStatelessPresence._getPresenceChannelName = function (channelName) {
   return 'presence>' + channelName;
 };
 
+SCStatelessPresence._isPresenceChannel = function (channelName) {
+  return /presence>/.test(channelName);
+};
+
 SCStatelessPresence._setupPresenceInterval = function () {
   setInterval(function () {
     Object.keys(this.workerSubscribers).forEach(function (channelName) {
@@ -23,6 +29,8 @@ SCStatelessPresence._setupPresenceInterval = function () {
       if (users.length) {
         var presenceChannelName = this._getPresenceChannelName(channelName);
         this.exchange.publish(presenceChannelName, {
+          type: 'ping',
+          timeout: this.presenceTimeout,
           users: users
         });
       }
@@ -36,28 +44,43 @@ SCStatelessPresence._getUserPresenceList = function (channelName) {
 };
 
 SCStatelessPresence.prototype._setupPresenceMiddleware = function () {
-  this.worker.addMiddleware(this.worker.MIDDLEWARE_SUBSCRIBE, function (req, next) {
-    var channel = req.channel;
+  this.scServer.addMiddleware(this.scServer.MIDDLEWARE_SUBSCRIBE, function (req, next) {
+    var channelName = req.channel;
     var socket = req.socket;
+
+    if (this._isPresenceChannel(channelName)) {
+      next();
+      return;
+    }
     if (!socket.authToken) {
+      next();
       return;
     }
     var username = socket.authToken.username;
     if (username == null) {
+      next();
       return;
     }
-    if (!this.workerSubscribers[channel]) {
-      this.workerSubscribers[channel] = {};
+
+    var presenceChannelName = this._getPresenceChannelName(channelName);
+    this.exchange.publish(presenceChannelName, {
+      type: 'join',
+      username: username
+    });
+
+    if (!this.workerSubscribers[channelName]) {
+      this.workerSubscribers[channelName] = {};
     }
-    if (!this.workerSubscribers[channel][username]) {
-      this.workerSubscribers[channel][username] = {};
+    if (!this.workerSubscribers[channelName][username]) {
+      this.workerSubscribers[channelName][username] = {};
     }
-    this.workerSubscribers[channel][username][socket.id] = socket;
+    this.workerSubscribers[channelName][username][socket.id] = socket;
 
     if (!socket.listeners('unsubscribe').length) {
       // Attach presence cleanup function to the socket if not already attached.
       this._cleanupSubscribersOnUnsubscribe(socket);
     }
+    next();
   }.bind(this));
 };
 
@@ -67,6 +90,13 @@ SCStatelessPresence.prototype._cleanupSubscribersOnUnsubscribe = function (socke
       return;
     }
     var username = socket.authToken.username;
+
+    var presenceChannelName = this._getPresenceChannelName(channelName);
+    this.exchange.publish(presenceChannelName, {
+      type: 'leave',
+      username: username
+    });
+
     if (this.workerSubscribers[channelName] && this.workerSubscribers[channelName][username]) {
       delete this.workerSubscribers[channelName][username][socket.id];
     }

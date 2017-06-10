@@ -13,6 +13,9 @@
   "author": "Jonathan Gros-Dubois",
   "license": "MIT",
   "dependencies": {
-    "lodash.isempty": "^4.4.0"
+    "lodash.isempty": "~4.4.0"
+  },
+  "peerDependencies": {
+    "socketcluster": "^5.14.0"
   }
 }

@@ -65,7 +65,9 @@ SCStatelessPresence.prototype._setupPresenceMiddleware = function () {
     var presenceChannelName = this._getPresenceChannelName(channelName);
     this.exchange.publish(presenceChannelName, {
       type: 'join',
-      username: username
+      username: username,
+      timeout: this.presenceTimeout,
+      socketId: socket.id
     });
 
     if (!this.workerSubscribers[channelName]) {

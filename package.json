@@ -16,6 +16,6 @@
     "lodash.isempty": "~4.4.0"
   },
   "peerDependencies": {
-    "socketcluster": "^5.14.0"
+    "socketcluster": "^6.0.1"
   }
 }

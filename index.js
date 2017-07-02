@@ -12,17 +12,26 @@ var SCStatelessPresence = function (options) {
 
   this._setupPresenceMiddleware();
   this._setupPresenceInterval();
+
+  this.scServer.on('authentication', this._handleNewlyAuthenticatedUser.bind(this));
+  this.scServer.on('deauthentication', this._cleanupAllSubscribers.bind(this));
+  this.scServer.on('unsubscription', function (socket, channelName) {
+    this._cleanupSubscribers(socket, channelName, socket.authToken);
+  }.bind(this));
+  this.scServer.on('disconnection', function (socket) {
+    this._cleanupAllSubscribers(socket, socket.authToken);
+  }.bind(this));
 };
 
-SCStatelessPresence._getPresenceChannelName = function (channelName) {
+SCStatelessPresence.prototype._getPresenceChannelName = function (channelName) {
   return 'presence>' + channelName;
 };
 
-SCStatelessPresence._isPresenceChannel = function (channelName) {
+SCStatelessPresence.prototype._isPresenceChannel = function (channelName) {
   return /presence>/.test(channelName);
 };
 
-SCStatelessPresence._setupPresenceInterval = function () {
+SCStatelessPresence.prototype._setupPresenceInterval = function () {
   setInterval(function () {
     Object.keys(this.workerSubscribers).forEach(function (channelName) {
       var users = Object.keys(this.workerSubscribers[channelName]);
@@ -38,9 +47,40 @@ SCStatelessPresence._setupPresenceInterval = function () {
   }.bind(this), this.presenceInterval);
 };
 
-SCStatelessPresence._getUserPresenceList = function (channelName) {
+SCStatelessPresence.prototype._getUserPresenceList = function (channelName) {
   var channelUserMap = this.workerSubscribers[channelName];
   return Object.keys(channelUserMap || {});
+};
+
+SCStatelessPresence.prototype._setUserPresence = function (socket, channelName) {
+  var username = socket.authToken.username;
+  if (username == null) {
+    return;
+  }
+
+  var presenceChannelName = this._getPresenceChannelName(channelName);
+
+  this.exchange.publish(presenceChannelName, {
+    type: 'join',
+    username: username,
+    timeout: this.presenceTimeout,
+    socketId: socket.id
+  });
+
+  if (!this.workerSubscribers[channelName]) {
+    this.workerSubscribers[channelName] = {};
+  }
+  if (!this.workerSubscribers[channelName][username]) {
+    this.workerSubscribers[channelName][username] = {};
+  }
+  this.workerSubscribers[channelName][username][socket.id] = socket;
+};
+
+SCStatelessPresence.prototype._handleNewlyAuthenticatedUser = function (socket) {
+  var subscriptions = socket.subscriptions();
+  subscriptions.forEach(function (channelName) {
+    this._setUserPresence(socket, channelName);
+  }.bind(this));
 };
 
 SCStatelessPresence.prototype._setupPresenceMiddleware = function () {
@@ -56,60 +96,45 @@ SCStatelessPresence.prototype._setupPresenceMiddleware = function () {
       next();
       return;
     }
-    var username = socket.authToken.username;
-    if (username == null) {
-      next();
-      return;
-    }
 
-    var presenceChannelName = this._getPresenceChannelName(channelName);
-    this.exchange.publish(presenceChannelName, {
-      type: 'join',
-      username: username,
-      timeout: this.presenceTimeout,
-      socketId: socket.id
-    });
+    this._setUserPresence(socket, channelName);
 
-    if (!this.workerSubscribers[channelName]) {
-      this.workerSubscribers[channelName] = {};
-    }
-    if (!this.workerSubscribers[channelName][username]) {
-      this.workerSubscribers[channelName][username] = {};
-    }
-    this.workerSubscribers[channelName][username][socket.id] = socket;
-
-    if (!socket.listeners('unsubscribe').length) {
-      // Attach presence cleanup function to the socket if not already attached.
-      this._cleanupSubscribersOnUnsubscribe(socket);
-    }
     next();
   }.bind(this));
 };
 
-SCStatelessPresence.prototype._cleanupSubscribersOnUnsubscribe = function (socket) {
-  socket.on('unsubscribe', function (channelName) {
-    if (!socket.authToken) {
-      return;
-    }
-    var username = socket.authToken.username;
-
-    var presenceChannelName = this._getPresenceChannelName(channelName);
-    this.exchange.publish(presenceChannelName, {
-      type: 'leave',
-      username: username
-    });
-
-    if (this.workerSubscribers[channelName] && this.workerSubscribers[channelName][username]) {
-      delete this.workerSubscribers[channelName][username][socket.id];
-    }
-
-    if (this.workerSubscribers[channelName] && isEmpty(this.workerSubscribers[channelName][username])) {
-      delete this.workerSubscribers[channelName][username];
-    }
-    if (isEmpty(this.workerSubscribers[channelName])) {
-      delete this.workerSubscribers[channelName];
-    }
+SCStatelessPresence.prototype._cleanupAllSubscribers = function (socket, authToken) {
+  var subscriptions = socket.subscriptions();
+  subscriptions.forEach(function (channelName) {
+    this._cleanupSubscribers(socket, channelName, authToken);
   }.bind(this));
+};
+
+SCStatelessPresence.prototype._cleanupSubscribers = function (socket, channelName, authToken) {
+  if (this._isPresenceChannel(channelName)) {
+    return;
+  }
+  if (!authToken) {
+    return;
+  }
+  var username = authToken.username;
+
+  var presenceChannelName = this._getPresenceChannelName(channelName);
+  this.exchange.publish(presenceChannelName, {
+    type: 'leave',
+    username: username
+  });
+
+  if (this.workerSubscribers[channelName] && this.workerSubscribers[channelName][username]) {
+    delete this.workerSubscribers[channelName][username][socket.id];
+  }
+
+  if (this.workerSubscribers[channelName] && isEmpty(this.workerSubscribers[channelName][username])) {
+    delete this.workerSubscribers[channelName][username];
+  }
+  if (isEmpty(this.workerSubscribers[channelName])) {
+    delete this.workerSubscribers[channelName];
+  }
 };
 
 module.exports.SCStatelessPresence = SCStatelessPresence;

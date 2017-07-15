@@ -52,7 +52,7 @@ SCStatelessPresence.prototype._getUserPresenceList = function (channelName) {
   return Object.keys(channelUserMap || {});
 };
 
-SCStatelessPresence.prototype._setUserPresence = function (socket, channelName) {
+SCStatelessPresence.prototype._markUserAsPresent = function (socket, channelName) {
   var username = socket.authToken.username;
   if (username == null) {
     return;
@@ -79,7 +79,7 @@ SCStatelessPresence.prototype._setUserPresence = function (socket, channelName) 
 SCStatelessPresence.prototype._handleNewlyAuthenticatedUser = function (socket) {
   var subscriptions = socket.subscriptions();
   subscriptions.forEach(function (channelName) {
-    this._setUserPresence(socket, channelName);
+    this._markUserAsPresent(socket, channelName);
   }.bind(this));
 };
 
@@ -97,7 +97,7 @@ SCStatelessPresence.prototype._setupPresenceMiddleware = function () {
       return;
     }
 
-    this._setUserPresence(socket, channelName);
+    this._markUserAsPresent(socket, channelName);
 
     next();
   }.bind(this));

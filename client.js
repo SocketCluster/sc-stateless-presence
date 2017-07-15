@@ -1,3 +1,5 @@
+var isEmpty = require('lodash.isempty');
+
 
 var SCStatelessPresenceClient = function (socket, options) {
   var self = this;
@@ -9,31 +11,38 @@ var SCStatelessPresenceClient = function (socket, options) {
   this.channelUsers = {};
   this.channelListeners = {};
 
+  this.socket.options.autoProcessSubscriptions = false;
+
   this.presenceCheckInterval = options.presenceCheckInterval || 1000;
   this._setupPresenceExpiryInterval();
 
   var lastSocketId = null;
 
-  socket.on('connect', function () {
+  var setupSocketChannel = function () {
     lastSocketId = socket.id;
     var socketChannelName = self._getSocketPresenceChannelName(lastSocketId);
     self.socket.subscribe(socketChannelName).watch(function (presencePacket) {
       if (presencePacket.type == 'pong') {
-        self.channelUsers[presencePacket.channel][presencePacket.username] = {
-          expiry: Date.now() + presencePacket.timeout
-        };
-        self.channelListeners[presencePacket.channel].forEach(function (listener) {
-          listener({
-            action: 'join',
-            username: presencePacket.username
-          });
-        });
+        self._markUserAsPresent(presencePacket.channel, presencePacket.username, Date.now() + presencePacket.timeout);
       }
     });
-  });
+    self.socket.processPendingSubscriptions();
+  };
+
+  if (self.socket.state == 'open') {
+    setupSocketChannel();
+  }
+  socket.on('connect', setupSocketChannel);
   socket.on('disconnect', function () {
     var socketChannelName = self._getSocketPresenceChannelName(lastSocketId);
     self.socket.unsubscribe(socketChannelName);
+
+    Object.keys(self.channelUsers).forEach(function (channelName) {
+      Object.keys(self.channelUsers[channelName] || {}).forEach(function (username) {
+        var userData = self.channelUsers[channelName][username];
+        self._markUserAsAbsent(channelName, username);
+      });
+    });
   });
 };
 
@@ -49,13 +58,7 @@ SCStatelessPresenceClient.prototype._setupPresenceExpiryInterval = function () {
       Object.keys(self.channelUsers[channelName] || {}).forEach(function (username) {
         var userData = self.channelUsers[channelName][username];
         if (userData.expiry < Date.now()) {
-          self.channelListeners[channelName].forEach(function (listener) {
-            listener({
-              action: 'leave',
-              username: username
-            });
-          });
-          delete self.channelUsers[channelName][username];
+          self._markUserAsAbsent(channelName, username);
         }
       });
     });
@@ -69,7 +72,7 @@ SCStatelessPresenceClient.prototype.isPresent = function (channelName, username)
 SCStatelessPresenceClient.prototype.getPresenceList = function (channelName) {
   var userMap = this.channelUsers[channelName];
   var userList = [];
-  
+
   for (var username in userMap) {
     if (userMap.hasOwnProperty(username)) {
       userList.push(username);
@@ -78,50 +81,85 @@ SCStatelessPresenceClient.prototype.getPresenceList = function (channelName) {
   return userList;
 };
 
-SCStatelessPresenceClient.prototype.trackPresence = function (channelName, listener) {
-  var self = this;
-
+SCStatelessPresenceClient.prototype._markUserAsPresent = function (channelName, username, expiry) {
   if (!this.channelUsers[channelName]) {
     this.channelUsers[channelName] = {};
   }
-  var presenceChannelName = this.presenceChannelPrefix + channelName;
-  if (!this.socket.isSubscribed(presenceChannelName, true)) {
-    this.socket.subscribe(presenceChannelName).watch(function (presencePacket) {
-      var now = Date.now();
-      if (presencePacket.type == 'join') {
-        self.channelUsers[channelName][presencePacket.username] = {
-          expiry: Date.now() + presencePacket.timeout
-        };
+  if (!this.channelUsers[channelName][username]) {
+    this.channelUsers[channelName][username] = {};
+  }
+  var userData = this.channelUsers[channelName][username];
+  userData.expiry = expiry;
+
+  if (!userData.isPresent) {
+    userData.isPresent = true;
+    this.channelListeners[channelName].forEach(function (listener) {
+      listener({
+        action: 'join',
+        username: username
+      });
+    });
+  }
+};
+
+SCStatelessPresenceClient.prototype._markUserAsAbsent = function (channelName, username) {
+  if (!this.channelUsers[channelName]) {
+    return;
+  }
+  var userData = this.channelUsers[channelName][username];
+
+  if (userData) {
+    delete this.channelUsers[channelName][username];
+
+    if (userData.isPresent) {
+      delete userData.isPresent;
+      this.channelListeners[channelName].forEach(function (listener) {
         listener({
-          action: 'join',
-          username: presencePacket.username
+          action: 'leave',
+          username: username
         });
-        var socketChannelName = self._getSocketPresenceChannelName();
+      });
+    }
+  }
+  if (isEmpty(this.channelUsers[channelName])) {
+    delete this.channelUsers[channelName];
+  }
+};
+
+SCStatelessPresenceClient.prototype.trackPresence = function (channelName, listener) {
+  var self = this;
+
+  var presenceChannelName = this.presenceChannelPrefix + channelName;
+  this.socket.subscribe(presenceChannelName);
+
+  if (!this.channelListeners[channelName]) {
+    this.channelListeners[channelName] = [];
+
+    this.socket.channel(presenceChannelName).watch(function (presencePacket) {
+      var now = Date.now();
+
+      if (presencePacket.type == 'join') {
+        self._markUserAsPresent(channelName, presencePacket.username, now + presencePacket.timeout);
+
+        var socketChannelName = self._getSocketPresenceChannelName(presencePacket.socketId);
         socket.publish(socketChannelName, {
           type: 'pong',
           channel: channelName,
           username: presencePacket.username,
           timeout: presencePacket.timeout
         });
-      } else if (presencePacket.type == 'leave') {
-        delete self.channelUsers[channelName][presencePacket.username];
-        listener({
-          action: 'leave',
-          username: presencePacket.username
-        });
       } else if (presencePacket.type == 'ping') {
         presencePacket.users.forEach(function (username) {
-          self.channelUsers[channelName][username] = {
-            expiry: now + presencePacket.timeout
-          };
+          self._markUserAsPresent(channelName, username, now + presencePacket.timeout);
         });
+      } else if (presencePacket.type == 'leave') {
+        self._markUserAsAbsent(channelName, presencePacket.username);
       }
     });
   }
-  if (!this.channelListeners[channelName]) {
-    this.channelListeners[channelName] = [];
+  if (listener) {
+    this.channelListeners[channelName].push(listener);
   }
-  this.channelListeners[channelName].push(listener);
 };
 
 module.exports.SCStatelessPresenceClient = SCStatelessPresenceClient;

@@ -20,8 +20,13 @@ var SCStatelessPresenceClient = function (socket, options) {
 
   var setupSocketChannel = function () {
     lastSocketId = socket.id;
+
     var socketChannelName = self._getSocketPresenceChannelName(lastSocketId);
-    self.socket.subscribe(socketChannelName).watch(function (presencePacket) {
+    var socketChannel = self.socket.subscribe(socketChannelName);
+    // Give socketChannel a higher priority, that way it will subscribe first.
+    socketChannel.priority = 1;
+
+    socketChannel.watch(function (presencePacket) {
       if (presencePacket.type == 'pong') {
         self._markUserAsPresent(presencePacket.channel, presencePacket.username, Date.now() + presencePacket.timeout);
       }

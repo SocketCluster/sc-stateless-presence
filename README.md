@@ -7,11 +7,16 @@ online at any given time.
 
 Requires SocketCluster version `6.0.1` or higher.
 
-To use:
+You may want to read the SocketCluster authentication guide before using this plugin: https://socketcluster.io/#!/docs/authentication
+
+### Installing
 
 ```bash
 npm install sc-stateless-presence
 ```
+
+
+### On the server
 
 On the server side, in `worker.js`:
 
@@ -30,7 +35,25 @@ var scStatelessPresence = require('sc-stateless-presence');
 scStatelessPresence.attach(worker, options);
 ```
 
-On the client side, you need to require `client.js` (if using webpack or Browserify) or include the standalone script `sc-stateless-presence-client.js`, then:
+Note that `sc-stateless-presence` tracks users based on a `username` property inside JWT tokens attached to sockets.
+
+To create a JWT token from SC on the server side, you will need to do something like this:
+
+```js
+socket.setAuthToken({username: 'alice123'});
+```
+
+It doesn't matter how the JWT token is created though (e.g. you can create it over HTTP before you connect the socket), so long as:
+
+- SC can verify the JWT with its own `authKey` (see the `authKey` option here: https://socketcluster.io/#!/docs/api-socketcluster).
+- The JWT token contains a JSON object which has a `username` property (make sure that the letter case matches exactly and that the value is a string which represents the user's username).
+
+For details about creating the JWT with HTTP before connecting the real-time socket in SocketCluster, see this discussion: https://github.com/SocketCluster/socketcluster/issues/233#issuecomment-254871963
+
+
+### On the client
+
+On the client side, you need to require `client.js` (if using webpack or Browserify) or include the standalone script `sc-stateless-presence-client.js` on your front end, then:
 
 ```js
 // Pass an existing socketcluster-client socket as argument.
@@ -44,7 +67,17 @@ On the client side, you need to require `client.js` (if using webpack or Browser
 //                        will take more time to detect when a user has
 //                        gone offline because of a connection failure.
 
-window.presence = scStatelessPresenceClient.create(socket, options);
+var presence = scStatelessPresenceClient.create(socket, options);
+```
+
+To track user presence on a channel on the client side:
+
+```js
+presence.trackPresence('sample', function (action) {
+  // The action argument can be in the form:
+  // { action: 'join', username: 'bob123' } or { action: 'leave', username: 'alice456' }
+  console.log('PRESENCE:', action);
+});
 ```
 
 ### Contributing

@@ -1,7 +1,7 @@
 # sc-stateless-presence
-Plugin for doing stateless presence in SC
+Plugin for doing stateless presence in SC.
 
-It lets you do real-time channel presence at scale without having to use an external memory store or database.
+This plugin lets you do real-time channel presence at scale without having to use an external memory store or database.
 It's ideal for tracking the presence of users within channels that have fewer than 100 concurrent subscribers
 online at any given time.
 
@@ -26,6 +26,7 @@ var scStatelessPresence = require('sc-stateless-presence');
 //                   Defaults to 10000.
 // presenceTimeout: Number of milliseconds without a ping which signifies that
 //                  a user has gone offline. Defaults to presenceInterval * 1.3.
+
 scStatelessPresence.attach(worker, options);
 ```
 
@@ -42,6 +43,7 @@ On the client side, you need to require `client.js` (if using webpack or Browser
 //                        Using a larger value means that the client
 //                        will take more time to detect when a user has
 //                        gone offline because of a connection failure.
+
 window.presence = scStatelessPresenceClient.create(socket, options);
 ```
 

@@ -127,7 +127,7 @@ SCStatelessPresenceClient.prototype._markUserAsAbsent = function (channelName, u
 
     if (userData.isPresent) {
       delete userData.isPresent;
-      this.channelListeners[channelName].forEach(function (listener) {
+      (this.channelListeners[channelName] || []).forEach(function (listener) {
         listener({
           action: 'leave',
           username: username
@@ -183,6 +183,29 @@ SCStatelessPresenceClient.prototype.trackPresence = function (channelName, liste
   }
   if (listener) {
     this.channelListeners[channelName].push(listener);
+  }
+};
+
+SCStatelessPresenceClient.prototype._cleanupPresenceChannelTracking = function (channelName, presenceChannelName) {
+  this.socket.unsubscribe(presenceChannelName);
+  delete this.channelListeners[channelName];
+  delete this.channelUsers[channelName];
+};
+
+SCStatelessPresenceClient.prototype.untrackPresence = function (channelName, listener) {
+  var presenceChannelName = this.presenceChannelPrefix + channelName;
+
+  if (listener) {
+    if (this.channelListeners[channelName]) {
+      this.channelListeners[channelName] = this.channelListeners[channelName].filter(function (channelListener) {
+        return channelListener !== listener;
+      });
+      if (!this.channelListeners[channelName].length) {
+        this._cleanupPresenceChannelTracking(channelName, presenceChannelName);
+      }
+    }
+  } else {
+    this._cleanupPresenceChannelTracking(channelName, presenceChannelName);
   }
 };
 

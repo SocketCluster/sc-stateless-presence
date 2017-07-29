@@ -13,7 +13,6 @@ var SCStatelessPresence = function (options) {
   this._setupPresenceMiddleware();
   this._setupPresenceInterval();
 
-  this.scServer.on('connection', this._handleNewlyConnectedSocket.bind(this));
   this.scServer.on('authentication', this._handleNewlyAuthenticatedUser.bind(this));
   this.scServer.on('deauthentication', this._cleanupAllSubscribers.bind(this));
   this.scServer.on('unsubscription', function (socket, channelName) {
@@ -26,6 +25,10 @@ var SCStatelessPresence = function (options) {
 
 SCStatelessPresence.prototype._getPresenceChannelName = function (channelName) {
   return 'presence>' + channelName;
+};
+
+SCStatelessPresence.prototype._getTargetChannelName = function (channelName) {
+  return channelName.replace(/^presence>/, '');
 };
 
 SCStatelessPresence.prototype._isPresenceChannel = function (channelName) {
@@ -53,9 +56,7 @@ SCStatelessPresence.prototype._getUserPresenceList = function (channelName) {
   return Object.keys(channelUserMap || {});
 };
 
-SCStatelessPresence.prototype._notifySocketJoin = function (socket, channelName) {
-  var presenceChannelName = this._getPresenceChannelName(channelName);
-
+SCStatelessPresence.prototype._notifySocketJoin = function (socket, presenceChannelName) {
   this.exchange.publish(presenceChannelName, {
     type: 'join',
     timeout: this.presenceTimeout,
@@ -87,13 +88,6 @@ SCStatelessPresence.prototype._markUserAsPresent = function (socket, channelName
   this.workerSubscribers[channelName][username][socket.id] = socket;
 };
 
-SCStatelessPresence.prototype._handleNewlyConnectedSocket = function (socket) {
-  var subscriptions = socket.subscriptions();
-  subscriptions.forEach(function (channelName) {
-    this._notifySocketJoin(socket, channelName);
-  }.bind(this));
-};
-
 SCStatelessPresence.prototype._handleNewlyAuthenticatedUser = function (socket) {
   var subscriptions = socket.subscriptions();
   subscriptions.forEach(function (channelName) {
@@ -108,9 +102,11 @@ SCStatelessPresence.prototype._setupPresenceMiddleware = function () {
 
     if (this._isPresenceChannel(channelName)) {
       next();
+      this._notifySocketJoin(socket, channelName);
       return;
     }
-    this._notifySocketJoin(socket, channelName);
+    var presenceChannelName = this._getPresenceChannelName(channelName);
+    this._notifySocketJoin(socket, presenceChannelName);
 
     if (!socket.authToken) {
       next();

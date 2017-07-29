@@ -73,11 +73,26 @@ var presence = scStatelessPresenceClient.create(socket, options);
 To track user presence on a channel on the client side:
 
 ```js
+// The handler function is optional.
 presence.trackPresence('sample', function (action) {
   // The action argument can be in the form:
   // { action: 'join', username: 'bob123' } or { action: 'leave', username: 'alice456' }
   console.log('PRESENCE:', action);
 });
+```
+
+Note that to get the presence status in real-time for a given channel, you need to make sure
+that all clients which are subscribed to that channel are also tracking it; otherwise there may
+be a delay based on the `presenceInterval` option provided on the server side.
+
+To untrack a channel or remove a tracking handler, you can use:
+
+```js
+// The handler function is optional; if provided, it will unbind that handler.
+// If a channel is being tracked by multiple handlers then the tracking will only
+// stop once all handlers have been unbound.
+// To untrack the channel and unbind all handlers, call it without a handler argument.
+presence.untrackPresence('sample', handler);
 ```
 
 ### Contributing

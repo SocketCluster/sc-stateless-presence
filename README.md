@@ -9,14 +9,15 @@ Requires SocketCluster version `6.0.1` or higher.
 
 You may want to read the SocketCluster authentication guide before using this plugin: https://socketcluster.io/#!/docs/authentication
 
-### Installing
+
+## Installing
 
 ```bash
 npm install sc-stateless-presence
 ```
 
 
-### On the server
+## On the server
 
 On the server side, in `worker.js`:
 
@@ -51,9 +52,11 @@ It doesn't matter how the JWT token is created though (e.g. you can create it ov
 For details about creating the JWT with HTTP before connecting the real-time socket in SocketCluster, see this discussion: https://github.com/SocketCluster/socketcluster/issues/233#issuecomment-254871963
 
 
-### On the client
+## On the client
 
 On the client side, you need to require `client.js` (if using webpack or Browserify) or include the standalone script `sc-stateless-presence-client.js` on your front end, then:
+
+### Initialize
 
 ```js
 // Pass an existing socketcluster-client socket as argument.
@@ -70,10 +73,13 @@ On the client side, you need to require `client.js` (if using webpack or Browser
 var presence = scStatelessPresenceClient.create(socket, options);
 ```
 
+### Track user presence changes
+
 To track user presence on a channel on the client side:
 
 ```js
-// The handler function is optional.
+// First argument is the channel name to track.
+// The listener function is optional.
 presence.trackPresence('sample', function (action) {
   // The action argument can be in the form:
   // { action: 'join', username: 'bob123' } or { action: 'leave', username: 'alice456' }
@@ -85,17 +91,36 @@ Note that to get the presence status in real-time for a given channel, you need 
 that all clients which are subscribed to that channel are also tracking it; otherwise there may
 be a delay based on the `presenceInterval` option provided on the server side.
 
-To untrack a channel or remove a tracking handler, you can use:
+### Stop tracking user presence changes
+
+To untrack a channel or remove a tracking listener, you can use:
 
 ```js
-// The handler function is optional; if provided, it will unbind that handler.
-// If a channel is being tracked by multiple handlers then the tracking will only
-// stop once all handlers have been unbound.
-// To untrack the channel and unbind all handlers, call it without a handler argument.
-presence.untrackPresence('sample', handler);
+// First argument is the channel name to stop tracking.
+// The listener function is optional; if provided, it will unbind that listener.
+// If a channel is being tracked by multiple listeners then the tracking will only
+// stop once all listeners have been unbound.
+// To untrack the channel and unbind all listeners, call it without a listener argument.
+presence.untrackPresence('sample', listener);
 ```
 
-### Contributing
+### Get the user presence list for a channel
+
+```js
+// Returns an array of usernames that are subscribed to the sample channel.
+presence.getPresenceList('sample');
+```
+
+### Get the listeners which are tracking a channel
+
+```js
+// The presence.channelListeners property is an object which maps a channel name to
+// an array of listener functions which are currently tracking the channel.
+presence.channelListeners['sample']
+```
+
+
+## Contributing
 
 To build the standalone client:
 

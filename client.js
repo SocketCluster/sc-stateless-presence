@@ -11,7 +11,7 @@ var SCStatelessPresenceClient = function (socket, options) {
   this.channelUsers = {};
   this.channelListeners = {};
 
-  this.socket.options.autoProcessSubscriptions = false;
+  this.socket.options.autoSubscribeOnConnect = false;
 
   this.presenceCheckInterval = options.presenceCheckInterval || 1000;
   this._setupPresenceExpiryInterval();
@@ -23,8 +23,17 @@ var SCStatelessPresenceClient = function (socket, options) {
 
     var socketChannelName = self._getSocketPresenceChannelName(lastSocketId);
     var socketChannel = self.socket.subscribe(socketChannelName);
+
     // Give socketChannel a higher priority, that way it will subscribe first.
-    socketChannel.priority = 1;
+    var maxPriority = 0;
+    var subscriptions = socket.subscriptions(true);
+    subscriptions.forEach(function (channelName) {
+      var priority = socket.channel(channelName).priority;
+      if (priority > maxPriority) {
+        maxPriority = priority;
+      }
+    });
+    socketChannel.priority = maxPriority + 1;
 
     socketChannel.watch(function (presencePacket) {
       if (presencePacket.type == 'pong') {
@@ -131,6 +140,18 @@ SCStatelessPresenceClient.prototype._markUserAsAbsent = function (channelName, u
   }
 };
 
+SCStatelessPresenceClient.prototype._sendSocketChannelPong = function (socket, channelName, presencePacket) {
+  if (socket.authToken && socket.authToken.username != null) {
+    var socketChannelName = this._getSocketPresenceChannelName(presencePacket.socketId);
+    socket.publish(socketChannelName, {
+      type: 'pong',
+      channel: channelName,
+      username: socket.authToken.username,
+      timeout: presencePacket.timeout
+    });
+  }
+};
+
 SCStatelessPresenceClient.prototype.trackPresence = function (channelName, listener) {
   var self = this;
 
@@ -144,15 +165,13 @@ SCStatelessPresenceClient.prototype.trackPresence = function (channelName, liste
       var now = Date.now();
 
       if (presencePacket.type == 'join') {
-        self._markUserAsPresent(channelName, presencePacket.username, now + presencePacket.timeout);
-
-        var socketChannelName = self._getSocketPresenceChannelName(presencePacket.socketId);
-        socket.publish(socketChannelName, {
-          type: 'pong',
-          channel: channelName,
-          username: presencePacket.username,
-          timeout: presencePacket.timeout
-        });
+        // A socket can join without necessarily having a user attached (not authenticated);
+        // in this case we won't have any new user to mark as present but we will pong back
+        // the socket anyway with the current socket's presence status.
+        if (presencePacket.username != null) {
+          self._markUserAsPresent(channelName, presencePacket.username, now + presencePacket.timeout);
+        }
+        self._sendSocketChannelPong(socket, channelName, presencePacket);
       } else if (presencePacket.type == 'ping') {
         presencePacket.users.forEach(function (username) {
           self._markUserAsPresent(channelName, username, now + presencePacket.timeout);

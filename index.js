@@ -13,6 +13,7 @@ var SCStatelessPresence = function (options) {
   this._setupPresenceMiddleware();
   this._setupPresenceInterval();
 
+  this.scServer.on('connection', this._handleNewlyConnectedSocket.bind(this));
   this.scServer.on('authentication', this._handleNewlyAuthenticatedUser.bind(this));
   this.scServer.on('deauthentication', this._cleanupAllSubscribers.bind(this));
   this.scServer.on('unsubscription', function (socket, channelName) {
@@ -52,6 +53,16 @@ SCStatelessPresence.prototype._getUserPresenceList = function (channelName) {
   return Object.keys(channelUserMap || {});
 };
 
+SCStatelessPresence.prototype._notifySocketJoin = function (socket, channelName) {
+  var presenceChannelName = this._getPresenceChannelName(channelName);
+
+  this.exchange.publish(presenceChannelName, {
+    type: 'join',
+    timeout: this.presenceTimeout,
+    socketId: socket.id
+  });
+};
+
 SCStatelessPresence.prototype._markUserAsPresent = function (socket, channelName) {
   var username = socket.authToken.username;
   if (username == null) {
@@ -76,6 +87,13 @@ SCStatelessPresence.prototype._markUserAsPresent = function (socket, channelName
   this.workerSubscribers[channelName][username][socket.id] = socket;
 };
 
+SCStatelessPresence.prototype._handleNewlyConnectedSocket = function (socket) {
+  var subscriptions = socket.subscriptions();
+  subscriptions.forEach(function (channelName) {
+    this._notifySocketJoin(socket, channelName);
+  }.bind(this));
+};
+
 SCStatelessPresence.prototype._handleNewlyAuthenticatedUser = function (socket) {
   var subscriptions = socket.subscriptions();
   subscriptions.forEach(function (channelName) {
@@ -92,6 +110,8 @@ SCStatelessPresence.prototype._setupPresenceMiddleware = function () {
       next();
       return;
     }
+    this._notifySocketJoin(socket, channelName);
+
     if (!socket.authToken) {
       next();
       return;

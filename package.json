@@ -1,6 +1,6 @@
 {
   "name": "sc-stateless-presence",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Stateless presence for SocketCluster",
   "main": "index.js",
   "scripts": {
@@ -14,8 +14,5 @@
   "license": "MIT",
   "dependencies": {
     "lodash.isempty": "~4.4.0"
-  },
-  "peerDependencies": {
-    "socketcluster": "^6.0.1"
   }
 }

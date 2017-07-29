@@ -80,6 +80,7 @@ To track user presence on a channel on the client side:
 ```js
 // First argument is the channel name to track.
 // The listener function is optional.
+
 presence.trackPresence('sample', function (action) {
   // The action argument can be in the form:
   // { action: 'join', username: 'bob123' } or { action: 'leave', username: 'alice456' }
@@ -101,6 +102,7 @@ To untrack a channel or remove a tracking listener, you can use:
 // If a channel is being tracked by multiple listeners then the tracking will only
 // stop once all listeners have been unbound.
 // To untrack the channel and unbind all listeners, call it without a listener argument.
+
 presence.untrackPresence('sample', listener);
 ```
 
@@ -108,6 +110,7 @@ presence.untrackPresence('sample', listener);
 
 ```js
 // Returns an array of usernames that are subscribed to the sample channel.
+
 presence.getPresenceList('sample');
 ```
 
@@ -116,6 +119,7 @@ presence.getPresenceList('sample');
 ```js
 // The presence.channelListeners property is an object which maps a channel name to
 // an array of listener functions which are currently tracking the channel.
+
 presence.channelListeners['sample']
 ```
 

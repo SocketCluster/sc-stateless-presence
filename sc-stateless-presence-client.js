@@ -172,7 +172,7 @@ SCStatelessPresenceClient.prototype.trackPresence = function (channelName, liste
         if (presencePacket.username != null) {
           self._markUserAsPresent(channelName, presencePacket.username, now + presencePacket.timeout);
         }
-        self._sendSocketChannelPong(socket, channelName, presencePacket);
+        self._sendSocketChannelPong(self.socket, channelName, presencePacket);
       } else if (presencePacket.type == 'ping') {
         presencePacket.users.forEach(function (username) {
           self._markUserAsPresent(channelName, username, now + presencePacket.timeout);

@@ -107,7 +107,7 @@ SCStatelessPresenceClient.prototype._markUserAsPresent = function (channelName, 
 
   if (!userData.isPresent) {
     userData.isPresent = true;
-    this.channelListeners[channelName].forEach(function (listener) {
+    (this.channelListeners[channelName] || []).forEach(function (listener) {
       listener({
         action: 'join',
         username: username

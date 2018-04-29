@@ -89,6 +89,10 @@ SCStatelessPresence.prototype._markUserAsPresent = function (socket, channelName
 };
 
 SCStatelessPresence.prototype._handleNewlyAuthenticatedUser = function (socket) {
+  if (socket.lastAuthToken && socket.lastAuthToken.username !== socket.authToken.username) {
+    this._cleanupAllSubscribers(socket, socket.lastAuthToken);
+  }
+  socket.lastAuthToken = socket.authToken;
   var subscriptions = socket.subscriptions();
   subscriptions.forEach(function (channelName) {
     this._markUserAsPresent(socket, channelName);

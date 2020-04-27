@@ -36,41 +36,38 @@ var SCStatelessPresenceClient = function (socket, options) {
     socketChannel.priority = maxPriority + 1;
     
     (async () => {
-        // Set up a loop to handle remote transmitted events.
-        for await (let presencePacket of socketChannel.listener('message')) {
-            if (presencePacket.type == 'pong') {
-                self._markUserAsPresent(presencePacket.channel, presencePacket.username, Date.now() + presencePacket.timeout);
-            }
+      // Set up a loop to handle remote transmitted events.
+      for await (let presencePacket of socketChannel.listener('message')) {
+        if (presencePacket.type == 'pong') {
+            self._markUserAsPresent(presencePacket.channel, presencePacket.username, Date.now() + presencePacket.timeout);
         }
+      }
     })();
     self.socket.processPendingSubscriptions();
-    //socketChannel.watch(function (presencePacket) {});
     
   };
 
   if (self.socket.state == 'open') {
     setupSocketChannel();
     (async () => {
-        // Set up a loop to handle remote transmitted events.
-        for await (let message of self.socket.listener('connect')) {
-            
-            setupSocketChannel();
-        }
+      // Set up a loop to handle remote transmitted events.
+      for await (let message of self.socket.listener('connect')) {
+        setupSocketChannel();
+      }
     })();
     (async () => {
-    // Set up a loop to handle remote transmitted events.
-    for await (let message of self.socket.listener('close')) {
-        
+      // Set up a loop to handle remote transmitted events.
+      for await (let message of self.socket.listener('close')) {
         var socketChannelName = self._getSocketPresenceChannelName(lastSocketId);
         self.socket.unsubscribe(socketChannelName);
 
         Object.keys(self.channelUsers).forEach(function (channelName) {
-        Object.keys(self.channelUsers[channelName] || {}).forEach(function (username) {
-            var userData = self.channelUsers[channelName][username];
-            self._markUserAsAbsent(channelName, username);
+          Object.keys(self.channelUsers[channelName] || {}).forEach(function (username) {
+              var userData = self.channelUsers[channelName][username];
+              self._markUserAsAbsent(channelName, username);
+          });
         });
-        });
-    }
+      }
     })();
   }
 
@@ -172,37 +169,32 @@ SCStatelessPresenceClient.prototype.trackPresence = function (channelName, liste
 
   var presenceChannelName = this.presenceChannelPrefix + channelName;
   this.socket.subscribe(presenceChannelName);
-  self.socket.processPendingSubscriptions()
-          
 
   if (!this.channelListeners[channelName]) {
     this.channelListeners[channelName] = [];
 
     
     (async () => {
-        var channel = self.socket.channel(presenceChannelName)
-        await channel.listener('subscribe').once();
-
-        // Set up a loop to handle remote transmitted events.
-        for await (let presencePacket of channel) {
-            var now = Date.now();
-            if (presencePacket.type == 'join') {
-                // A socket can join without necessarily having a user attached (not authenticated);
-                // in this case we won't have any new user to mark as present but we will pong back
-                // the socket anyway with the current socket's presence status.
-                if (presencePacket.username != null) {
-                    self._markUserAsPresent(channelName, presencePacket.username, now + presencePacket.timeout);
-                }
-                self._sendSocketChannelPong(self.socket, channelName, presencePacket);
-            } else if (presencePacket.type == 'ping') {
-                presencePacket.users.forEach(function (username) {
-                    self._markUserAsPresent(channelName, username, now + presencePacket.timeout);
-                });
-            } else if (presencePacket.type == 'leave') {
-                self._markUserAsAbsent(channelName, presencePacket.username);
+      var channel = self.socket.channel(presenceChannelName)
+      // Set up a loop to handle remote transmitted events.
+      for await (let presencePacket of channel) {
+        var now = Date.now();
+        if (presencePacket.type == 'join') {
+            // A socket can join without necessarily having a user attached (not authenticated);
+            // in this case we won't have any new user to mark as present but we will pong back
+            // the socket anyway with the current socket's presence status.
+            if (presencePacket.username != null) {
+                self._markUserAsPresent(channelName, presencePacket.username, now + presencePacket.timeout);
             }
+            self._sendSocketChannelPong(self.socket, channelName, presencePacket);
+        } else if (presencePacket.type == 'ping') {
+            presencePacket.users.forEach(function (username) {
+                self._markUserAsPresent(channelName, username, now + presencePacket.timeout);
+            });
+        } else if (presencePacket.type == 'leave') {
+            self._markUserAsAbsent(channelName, presencePacket.username);
         }
-        //
+      }
     })();
     
   }

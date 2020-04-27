@@ -16,9 +16,9 @@ var SCStatelessPresence = function (options) {
   (async () =>{
     for await (let action of self.scServer.listener('authenticationStateChange')) {
       let { type, socket, channel, data } = action
-      if(action.newAuthState == action.socket.UNAUTHENTICATED){
+      if (action.newAuthState == action.socket.UNAUTHENTICATED) {
         self._cleanupSubscribers(socket, channel, socket.authToken)
-      }else if(action.newAuthState == action.socket.AUTHENTICATED){
+      } else if (action.newAuthState == action.socket.AUTHENTICATED) {
         self._handleNewlyAuthenticatedUser(socket)
       }
     }
@@ -26,9 +26,9 @@ var SCStatelessPresence = function (options) {
   (async () =>{
     for await (let action of self.scServer.listener('subscription')) {
       let { type, socket, channel, data } = action
-      if(action.newAuthState == action.socket.UNAUTHENTICATED){
+      if (action.newAuthState == action.socket.UNAUTHENTICATED) {
         self._cleanupSubscribers(socket, channel, socket.authToken)
-      }else if(action.newAuthState == action.socket.AUTHENTICATED){
+      } else if (action.newAuthState == action.socket.AUTHENTICATED) {
         self._handleNewlyAuthenticatedUser(socket)
       }
     }
@@ -43,9 +43,7 @@ var SCStatelessPresence = function (options) {
   (async () =>{
     for await (let action of self.scServer.listener('disconnection')) {
       let { type, socket, channel, data } = action
-      if(action.code == 1000){
-        self._cleanupAllSubscribers(socket, socket.authToken)
-      }
+      self._cleanupAllSubscribers(socket, socket.authToken)
     }
   })();
   return this.scServer
@@ -145,7 +143,7 @@ SCStatelessPresence.prototype._setupPresenceMiddleware = function () {
         }
         this._markUserAsPresent(socket, channelName);
         action.allow();
-      }else{
+      } else {
         action.allow();
       }
       

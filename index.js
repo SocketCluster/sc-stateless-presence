@@ -1,52 +1,62 @@
-var isEmpty = require('lodash.isempty');
+const isEmpty = require('lodash.isempty');
 
-var SCStatelessPresence = function (options) {
-  var self = this
+let SCStatelessPresence = function (options) {
   this.options = options || {};
   this.presenceInterval = this.options.presenceInterval || 10000;
   this.presenceTimeout = this.options.presenceTimeout || Math.round(this.presenceInterval * 1.3);
 
-  this.worker = options.worker;
-  this.scServer = this.worker;
+  this.scServer = options.scServer;
   this.exchange = this.scServer.exchange;
-  this.workerSubscribers = {};
+  this.serverSubscribers = {};
 
-  this._setupPresenceMiddleware();
+  this._authenticationStateChangeConsumer = this.scServer.listener('authenticationStateChange').createConsumer();
+  this._subscriptionConsumer = this.scServer.listener('subscription').createConsumer();
+  this._unsubscriptionConsumer = this.scServer.listener('unsubscription').createConsumer();
+  this._disconnectionConsumer = this.scServer.listener('disconnection').createConsumer();
+
+  (async () => {
+    for await (let action of this._authenticationStateChangeConsumer) {
+      let {type, socket, channel, data, newAuthState} = action;
+      if (newAuthState == socket.UNAUTHENTICATED) {
+        this._cleanupAllSubscribers(socket, socket.lastAuthToken);
+      } else if (newAuthState == socket.AUTHENTICATED) {
+        this._handleNewlyAuthenticatedUser(socket);
+      }
+    }
+  })();
+
+  (async () => {
+    for await (let action of this._subscriptionConsumer) {
+      let {socket, channel} = action;
+      if (this._isPresenceChannel(channel)) {
+        this._notifySocketJoin(socket, channel);
+        continue;
+      }
+      let presenceChannelName = this._getPresenceChannelName(channel);
+      this._notifySocketJoin(socket, presenceChannelName);
+
+      if (!socket.authToken) {
+        continue;
+      }
+      this._markUserAsPresent(socket, channel);
+    }
+  })();
+
+  (async () => {
+    for await (let action of this._unsubscriptionConsumer) {
+      let {socket, channel} = action;
+      this._cleanupSubscribers(socket, channel, socket.authToken);
+    }
+  })();
+
+  (async () => {
+    for await (let action of this._disconnectionConsumer) {
+      let {socket} = action;
+      this._cleanupAllSubscribers(socket, socket.authToken);
+    }
+  })();
+
   this._setupPresenceInterval();
-  (async () =>{
-    for await (let action of self.scServer.listener('authenticationStateChange')) {
-      let { type, socket, channel, data } = action
-      if (action.newAuthState == action.socket.UNAUTHENTICATED) {
-        self._cleanupSubscribers(socket, channel, socket.authToken)
-      } else if (action.newAuthState == action.socket.AUTHENTICATED) {
-        self._handleNewlyAuthenticatedUser(socket)
-      }
-    }
-  })();
-  (async () =>{
-    for await (let action of self.scServer.listener('subscription')) {
-      let { type, socket, channel, data } = action
-      if (action.newAuthState == action.socket.UNAUTHENTICATED) {
-        self._cleanupSubscribers(socket, channel, socket.authToken)
-      } else if (action.newAuthState == action.socket.AUTHENTICATED) {
-        self._handleNewlyAuthenticatedUser(socket)
-      }
-    }
-  })();
-  (async () =>{
-    for await (let action of self.scServer.listener('unsubscription')) {
-      let { type, socket, channel, data } = action
-      self._cleanupSubscribers(socket, channel, socket.authToken)
-    }
-  })();
-
-  (async () =>{
-    for await (let action of self.scServer.listener('disconnection')) {
-      let { type, socket, channel, data } = action
-      self._cleanupAllSubscribers(socket, socket.authToken)
-    }
-  })();
-  return this.scServer
 };
 
 SCStatelessPresence.prototype._getPresenceChannelName = function (channelName) {
@@ -62,23 +72,23 @@ SCStatelessPresence.prototype._isPresenceChannel = function (channelName) {
 };
 
 SCStatelessPresence.prototype._setupPresenceInterval = function () {
-  setInterval(function () {
-    Object.keys(this.workerSubscribers).forEach(function (channelName) {
-      var users = Object.keys(this.workerSubscribers[channelName]);
+  this._presenceInterval = setInterval(() => {
+    Object.keys(this.serverSubscribers).forEach((channelName) => {
+      let users = Object.keys(this.serverSubscribers[channelName]);
       if (users.length) {
-        var presenceChannelName = this._getPresenceChannelName(channelName);
+        let presenceChannelName = this._getPresenceChannelName(channelName);
         this.exchange.transmitPublish(presenceChannelName, {
           type: 'ping',
           timeout: this.presenceTimeout,
           users: users
         });
       }
-    }.bind(this));
-  }.bind(this), this.presenceInterval);
+    });
+  }, this.presenceInterval);
 };
 
 SCStatelessPresence.prototype._getUserPresenceList = function (channelName) {
-  var channelUserMap = this.workerSubscribers[channelName];
+  let channelUserMap = this.serverSubscribers[channelName];
   return Object.keys(channelUserMap || {});
 };
 
@@ -91,11 +101,11 @@ SCStatelessPresence.prototype._notifySocketJoin = function (socket, presenceChan
 };
 
 SCStatelessPresence.prototype._markUserAsPresent = function (socket, channelName) {
-  var username = socket.authToken.username;
+  let username = socket.authToken.username;
   if (username == null) {
     return;
   }
-  var presenceChannelName = this._getPresenceChannelName(channelName);
+  let presenceChannelName = this._getPresenceChannelName(channelName);
   this.exchange.transmitPublish(presenceChannelName, {
     type: 'join',
     username: username,
@@ -103,13 +113,13 @@ SCStatelessPresence.prototype._markUserAsPresent = function (socket, channelName
     socketId: socket.id
   });
 
-  if (!this.workerSubscribers[channelName]) {
-    this.workerSubscribers[channelName] = {};
+  if (!this.serverSubscribers[channelName]) {
+    this.serverSubscribers[channelName] = {};
   }
-  if (!this.workerSubscribers[channelName][username]) {
-    this.workerSubscribers[channelName][username] = {};
+  if (!this.serverSubscribers[channelName][username]) {
+    this.serverSubscribers[channelName][username] = {};
   }
-  this.workerSubscribers[channelName][username][socket.id] = socket;
+  this.serverSubscribers[channelName][username][socket.id] = socket;
 };
 
 SCStatelessPresence.prototype._handleNewlyAuthenticatedUser = function (socket) {
@@ -117,45 +127,17 @@ SCStatelessPresence.prototype._handleNewlyAuthenticatedUser = function (socket) 
     this._cleanupAllSubscribers(socket, socket.lastAuthToken);
   }
   socket.lastAuthToken = socket.authToken;
-  var subscriptions = socket.subscriptions();
-  subscriptions.forEach(function (channelName) {
+  let subscriptions = socket.subscriptions();
+  subscriptions.forEach((channelName) => {
     this._markUserAsPresent(socket, channelName);
-  }.bind(this));
-};
-
-SCStatelessPresence.prototype._setupPresenceMiddleware = function () {
-  this.scServer.setMiddleware(this.scServer.MIDDLEWARE_INBOUND, async function (middlewareStream) {
-    for await (let action of middlewareStream) {
-      if (action.type === action.SUBSCRIBE) {
-        let { type, socket, channel, data } = action
-        var channelName = channel;
-        if (this._isPresenceChannel(channelName)) {
-          action.allow();
-          this._notifySocketJoin(socket, channelName);
-          return;
-        }
-        var presenceChannelName = this._getPresenceChannelName(channelName);
-        this._notifySocketJoin(socket, presenceChannelName);
-    
-        if (!socket.authToken) {
-          action.allow();
-          return;
-        }
-        this._markUserAsPresent(socket, channelName);
-        action.allow();
-      } else {
-        action.allow();
-      }
-      
-    }
-  }.bind(this));
+  });
 };
 
 SCStatelessPresence.prototype._cleanupAllSubscribers = function (socket, authToken) {
-  var subscriptions = socket.subscriptions();
-  subscriptions.forEach(function (channelName) {
+  let subscriptions = socket.subscriptions();
+  subscriptions.forEach((channelName) => {
     this._cleanupSubscribers(socket, channelName, authToken);
-  }.bind(this));
+  });
 };
 
 SCStatelessPresence.prototype._cleanupSubscribers = function (socket, channelName, authToken) {
@@ -165,33 +147,41 @@ SCStatelessPresence.prototype._cleanupSubscribers = function (socket, channelNam
   if (!authToken) {
     return;
   }
-  var username = authToken.username;
+  let username = authToken.username;
 
-  var presenceChannelName = this._getPresenceChannelName(channelName);
+  let presenceChannelName = this._getPresenceChannelName(channelName);
   this.exchange.transmitPublish(presenceChannelName, {
     type: 'leave',
     username: username
   });
 
-  if (this.workerSubscribers[channelName] && this.workerSubscribers[channelName][username]) {
-    delete this.workerSubscribers[channelName][username][socket.id];
+  if (this.serverSubscribers[channelName] && this.serverSubscribers[channelName][username]) {
+    delete this.serverSubscribers[channelName][username][socket.id];
   }
 
-  if (this.workerSubscribers[channelName] && isEmpty(this.workerSubscribers[channelName][username])) {
-    delete this.workerSubscribers[channelName][username];
+  if (this.serverSubscribers[channelName] && isEmpty(this.serverSubscribers[channelName][username])) {
+    delete this.serverSubscribers[channelName][username];
   }
-  if (isEmpty(this.workerSubscribers[channelName])) {
-    delete this.workerSubscribers[channelName];
+  if (isEmpty(this.serverSubscribers[channelName])) {
+    delete this.serverSubscribers[channelName];
   }
+};
+
+SCStatelessPresence.prototype.destroy = function () {
+  clearInterval(this._presenceInterval);
+  this._authenticationStateChangeConsumer.kill();
+  this._subscriptionConsumer.kill();
+  this._unsubscriptionConsumer.kill();
+  this._disconnectionConsumer.kill();
 };
 
 module.exports.SCStatelessPresence = SCStatelessPresence;
 
-module.exports.attach = function (worker, options) {
+module.exports.attach = function (scServer, options) {
   if (options) {
-    options.worker = worker;
+    options.scServer = scServer;
   } else {
-    options = {worker: worker};
+    options = {scServer};
   }
   return new SCStatelessPresence(options);
 };

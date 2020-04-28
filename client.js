@@ -1,9 +1,6 @@
-var isEmpty = require('lodash.isempty');
+const isEmpty = require('lodash.isempty');
 
-
-var SCStatelessPresenceClient = function (socket, options) {
-  var self = this;
-
+let SCStatelessPresenceClient = function (socket, options) {
   options = options || {};
 
   this.presenceChannelPrefix = 'presence>';
@@ -16,61 +13,71 @@ var SCStatelessPresenceClient = function (socket, options) {
   this.presenceCheckInterval = options.presenceCheckInterval || 1000;
   this._setupPresenceExpiryInterval();
 
-  var lastSocketId = null;
+  let lastSocketId = null;
 
-  var setupSocketChannel = function () {
+  let setupSocketChannel = () => {
     lastSocketId = socket.id;
 
-    var socketChannelName = self._getSocketPresenceChannelName(lastSocketId);
-    var socketChannel = self.socket.subscribe(socketChannelName);
+    if (this._lastSocketChannel) {
+      this._lastSocketChannel.unsubscribe();
+      this._lastSocketChannel.kill();
+    }
+
+    let socketChannelName = this._getSocketPresenceChannelName(lastSocketId);
+    let socketChannel = this.socket.subscribe(socketChannelName);
+    this._lastSocketChannel = socketChannel;
 
     // Give socketChannel a higher priority, that way it will subscribe first.
-    var maxPriority = 0;
-    var subscriptions = self.socket.subscriptions(true);
-    subscriptions.forEach(function (channelName) {
-      var priority = socket.channel(channelName).priority;
+    let maxPriority = 0;
+    let subscriptions = this.socket.subscriptions(true);
+    subscriptions.forEach((channelName) => {
+      let priority = socket.channel(channelName).priority;
       if (priority > maxPriority) {
         maxPriority = priority;
       }
     });
     socketChannel.priority = maxPriority + 1;
-    
+
     (async () => {
       // Set up a loop to handle remote transmitted events.
       for await (let presencePacket of socketChannel.listener('message')) {
         if (presencePacket.type == 'pong') {
-            self._markUserAsPresent(presencePacket.channel, presencePacket.username, Date.now() + presencePacket.timeout);
+            this._markUserAsPresent(presencePacket.channel, presencePacket.username, Date.now() + presencePacket.timeout);
         }
       }
     })();
-    self.socket.processPendingSubscriptions();
-    
+
+    this.socket.processPendingSubscriptions();
   };
 
-  if (self.socket.state == 'open') {
-    setupSocketChannel();
-    (async () => {
-      // Set up a loop to handle remote transmitted events.
-      for await (let message of self.socket.listener('connect')) {
-        setupSocketChannel();
-      }
-    })();
-    (async () => {
-      // Set up a loop to handle remote transmitted events.
-      for await (let message of self.socket.listener('close')) {
-        var socketChannelName = self._getSocketPresenceChannelName(lastSocketId);
-        self.socket.unsubscribe(socketChannelName);
+  this._connectConsumer = this.socket.listener('connect').createConsumer();
+  this._closeConsumer = this.socket.listener('close').createConsumer();
 
-        Object.keys(self.channelUsers).forEach(function (channelName) {
-          Object.keys(self.channelUsers[channelName] || {}).forEach(function (username) {
-              var userData = self.channelUsers[channelName][username];
-              self._markUserAsAbsent(channelName, username);
-          });
-        });
-      }
-    })();
+  if (this.socket.state == 'open') {
+    setupSocketChannel();
   }
 
+  (async () => {
+    // Set up a loop to handle remote transmitted events.
+    for await (let message of this._connectConsumer) {
+      setupSocketChannel();
+    }
+  })();
+
+  (async () => {
+    // Set up a loop to handle remote transmitted events.
+    for await (let message of this._closeConsumer) {
+      let socketChannelName = this._getSocketPresenceChannelName(lastSocketId);
+      this.socket.unsubscribe(socketChannelName);
+
+      Object.keys(this.channelUsers).forEach((channelName) => {
+        Object.keys(this.channelUsers[channelName] || {}).forEach((username) => {
+            let userData = this.channelUsers[channelName][username];
+            this._markUserAsAbsent(channelName, username);
+        });
+      });
+    }
+  })();
 };
 
 SCStatelessPresenceClient.prototype._getSocketPresenceChannelName = function (socketId) {
@@ -78,14 +85,12 @@ SCStatelessPresenceClient.prototype._getSocketPresenceChannelName = function (so
 };
 
 SCStatelessPresenceClient.prototype._setupPresenceExpiryInterval = function () {
-  var self = this;
-
-  setInterval(function () {
-    Object.keys(self.channelUsers).forEach(function (channelName) {
-      Object.keys(self.channelUsers[channelName] || {}).forEach(function (username) {
-        var userData = self.channelUsers[channelName][username];
+  this._presenceExpiryInterval = setInterval(() => {
+    Object.keys(this.channelUsers).forEach((channelName) => {
+      Object.keys(this.channelUsers[channelName] || {}).forEach((username) => {
+        let userData = this.channelUsers[channelName][username];
         if (userData.expiry < Date.now()) {
-          self._markUserAsAbsent(channelName, username);
+          this._markUserAsAbsent(channelName, username);
         }
       });
     });
@@ -97,10 +102,10 @@ SCStatelessPresenceClient.prototype.isPresent = function (channelName, username)
 };
 
 SCStatelessPresenceClient.prototype.getPresenceList = function (channelName) {
-  var userMap = this.channelUsers[channelName];
-  var userList = [];
+  let userMap = this.channelUsers[channelName];
+  let userList = [];
 
-  for (var username in userMap) {
+  for (let username in userMap) {
     if (userMap.hasOwnProperty(username)) {
       userList.push(username);
     }
@@ -115,12 +120,12 @@ SCStatelessPresenceClient.prototype._markUserAsPresent = function (channelName, 
   if (!this.channelUsers[channelName][username]) {
     this.channelUsers[channelName][username] = {};
   }
-  var userData = this.channelUsers[channelName][username];
+  let userData = this.channelUsers[channelName][username];
   userData.expiry = expiry;
 
   if (!userData.isPresent) {
     userData.isPresent = true;
-    (this.channelListeners[channelName] || []).forEach(function (listener) {
+    (this.channelListeners[channelName] || []).forEach((listener) => {
       listener({
         action: 'join',
         username: username
@@ -133,13 +138,13 @@ SCStatelessPresenceClient.prototype._markUserAsAbsent = function (channelName, u
   if (!this.channelUsers[channelName]) {
     return;
   }
-  var userData = this.channelUsers[channelName][username];
+  let userData = this.channelUsers[channelName][username];
   if (userData) {
     delete this.channelUsers[channelName][username];
 
     if (userData.isPresent) {
       delete userData.isPresent;
-      (this.channelListeners[channelName] || []).forEach(function (listener) {
+      (this.channelListeners[channelName] || []).forEach((listener) => {
         listener({
           action: 'leave',
           username: username
@@ -154,7 +159,7 @@ SCStatelessPresenceClient.prototype._markUserAsAbsent = function (channelName, u
 
 SCStatelessPresenceClient.prototype._sendSocketChannelPong = function (socket, channelName, presencePacket) {
   if (socket.authToken && socket.authToken.username != null) {
-    var socketChannelName = this._getSocketPresenceChannelName(presencePacket.socketId);
+    let socketChannelName = this._getSocketPresenceChannelName(presencePacket.socketId);
     socket.transmitPublish(socketChannelName, {
       type: 'pong',
       channel: channelName,
@@ -165,38 +170,35 @@ SCStatelessPresenceClient.prototype._sendSocketChannelPong = function (socket, c
 };
 
 SCStatelessPresenceClient.prototype.trackPresence = function (channelName, listener) {
-  var self = this;
-
-  var presenceChannelName = this.presenceChannelPrefix + channelName;
+  let presenceChannelName = this.presenceChannelPrefix + channelName;
   this.socket.subscribe(presenceChannelName);
 
   if (!this.channelListeners[channelName]) {
     this.channelListeners[channelName] = [];
 
-    
     (async () => {
-      var channel = self.socket.channel(presenceChannelName)
+      let channel = this.socket.channel(presenceChannelName)
       // Set up a loop to handle remote transmitted events.
       for await (let presencePacket of channel) {
-        var now = Date.now();
+        let now = Date.now();
         if (presencePacket.type == 'join') {
             // A socket can join without necessarily having a user attached (not authenticated);
             // in this case we won't have any new user to mark as present but we will pong back
             // the socket anyway with the current socket's presence status.
             if (presencePacket.username != null) {
-                self._markUserAsPresent(channelName, presencePacket.username, now + presencePacket.timeout);
+                this._markUserAsPresent(channelName, presencePacket.username, now + presencePacket.timeout);
             }
-            self._sendSocketChannelPong(self.socket, channelName, presencePacket);
+            this._sendSocketChannelPong(this.socket, channelName, presencePacket);
         } else if (presencePacket.type == 'ping') {
-            presencePacket.users.forEach(function (username) {
-                self._markUserAsPresent(channelName, username, now + presencePacket.timeout);
+            presencePacket.users.forEach((username) => {
+                this._markUserAsPresent(channelName, username, now + presencePacket.timeout);
             });
         } else if (presencePacket.type == 'leave') {
-            self._markUserAsAbsent(channelName, presencePacket.username);
+            this._markUserAsAbsent(channelName, presencePacket.username);
         }
       }
     })();
-    
+
   }
   if (listener) {
     this.channelListeners[channelName].push(listener);
@@ -204,17 +206,21 @@ SCStatelessPresenceClient.prototype.trackPresence = function (channelName, liste
 };
 
 SCStatelessPresenceClient.prototype._cleanupPresenceChannelTracking = function (channelName, presenceChannelName) {
-  this.socket.unsubscribe(presenceChannelName);
-  delete this.channelListeners[channelName];
-  delete this.channelUsers[channelName];
+  let channel = this.socket.channel(presenceChannelName);
+  if (channel) {
+    channel.unsubscribe();
+    channel.kill();
+    delete this.channelListeners[channelName];
+    delete this.channelUsers[channelName];
+  }
 };
 
 SCStatelessPresenceClient.prototype.untrackPresence = function (channelName, listener) {
-  var presenceChannelName = this.presenceChannelPrefix + channelName;
+  let presenceChannelName = this.presenceChannelPrefix + channelName;
 
   if (listener) {
     if (this.channelListeners[channelName]) {
-      this.channelListeners[channelName] = this.channelListeners[channelName].filter(function (channelListener) {
+      this.channelListeners[channelName] = this.channelListeners[channelName].filter((channelListener) => {
         return channelListener !== listener;
       });
       if (!this.channelListeners[channelName].length) {
@@ -226,7 +232,27 @@ SCStatelessPresenceClient.prototype.untrackPresence = function (channelName, lis
   }
 };
 
+SCStatelessPresenceClient.prototype.untrackAllPresences = function () {
+  let presenceChannels = Object.keys(this.channelListeners);
+
+  for (let channelName of presenceChannels) {
+    this.untrackPresence(channelName);
+  }
+}
+
+SCStatelessPresenceClient.prototype.destroy = function () {
+  clearInterval(this._presenceExpiryInterval);
+  this.untrackAllPresences();
+  this._connectConsumer.kill();
+  this._closeConsumer.kill();
+  if (this._lastSocketChannel) {
+    this._lastSocketChannel.unsubscribe();
+    this._lastSocketChannel.kill();
+  }
+};
+
 module.exports.SCStatelessPresenceClient = SCStatelessPresenceClient;
+
 module.exports.create = function (socket, options) {
   return new SCStatelessPresenceClient(socket, options);
 };

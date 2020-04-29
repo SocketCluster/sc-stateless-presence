@@ -52,7 +52,6 @@ let SCStatelessPresence = function (options) {
   (async () => {
     for await (let action of this._disconnectionConsumer) {
       let {socket} = action;
-      console.warn("DISCONNECTED")
       this._cleanupAllSubscribers(socket, socket.authToken);
     }
   })();

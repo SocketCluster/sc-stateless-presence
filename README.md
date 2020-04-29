@@ -78,14 +78,13 @@ var presence = scStatelessPresenceClient.create(socket, options);
 To track user presence on a channel on the client side:
 
 ```js
-// First argument is the channel name to track.
-// The listener function is optional.
-
-presence.trackPresence('sample', function (action) {
+// The only argument is the channel name to track.
+// The object returned by the method is a Stream that can be consumed in a for-await loop.
+for await (var action of presence.trackPresence('sample')) {
   // The action argument can be in the form:
   // { action: 'join', username: 'bob123' } or { action: 'leave', username: 'alice456' }
   console.log('PRESENCE:', action);
-});
+};
 ```
 
 Note that to get the presence status in real-time for a given channel, you need to make sure
@@ -97,13 +96,10 @@ be a delay based on the `presenceInterval` option provided on the server side.
 To untrack a channel or remove a tracking listener, you can use:
 
 ```js
-// First argument is the channel name to stop tracking.
-// The listener function is optional; if provided, it will unbind that listener.
-// If a channel is being tracked by multiple listeners then the tracking will only
-// stop once all listeners have been unbound.
-// To untrack the channel and unbind all listeners, call it without a listener argument.
+// The only argument is the channel name to stop tracking.
+// All loops consuming the channel stream will break
 
-presence.untrackPresence('sample', listener);
+presence.untrackPresence('sample');
 ```
 
 ### Get the user presence list for a channel

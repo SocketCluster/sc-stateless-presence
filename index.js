@@ -52,6 +52,7 @@ let SCStatelessPresence = function (options) {
   (async () => {
     for await (let action of this._disconnectionConsumer) {
       let {socket} = action;
+      console.warn("DISCONNECTED")
       this._cleanupAllSubscribers(socket, socket.authToken);
     }
   })();
@@ -145,6 +146,9 @@ SCStatelessPresence.prototype._cleanupSubscribers = function (socket, channelNam
     return;
   }
   if (!authToken) {
+    return;
+  }
+  if (!authToken.username) {
     return;
   }
   let username = authToken.username;

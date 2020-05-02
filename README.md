@@ -22,7 +22,7 @@ npm install sc-stateless-presence
 On the server side, in `worker.js`:
 
 ```js
-var scStatelessPresence = require('sc-stateless-presence');
+const scStatelessPresence = require('sc-stateless-presence');
 
 // Pass the SCWorker instance as argument.
 // The options object is optional.
@@ -70,7 +70,7 @@ On the client side, you need to require `client.js` (if using webpack or Browser
 //                        will take more time to detect when a user has
 //                        gone offline because of a connection failure.
 
-var presence = scStatelessPresenceClient.create(socket, options);
+let presence = scStatelessPresenceClient.create(socket, options);
 ```
 
 ### Track user presence changes
@@ -80,7 +80,7 @@ To track user presence on a channel on the client side:
 ```js
 // The only argument is the channel name to track.
 // The object returned by the method is a Stream that can be consumed in a for-await loop.
-for await (var action of presence.trackPresence('sample')) {
+for await (let action of presence.trackPresence('sample')) {
   // The action argument can be in the form:
   // { action: 'join', username: 'bob123' } or { action: 'leave', username: 'alice456' }
   console.log('PRESENCE:', action);

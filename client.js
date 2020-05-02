@@ -171,7 +171,7 @@ SCStatelessPresenceClient.prototype._sendSocketChannelPong = function (socket, c
 SCStatelessPresenceClient.prototype.trackPresence = function (channelName) {
   let presenceChannelName = this.presenceChannelPrefix + channelName;
   this.socket.subscribe(presenceChannelName);
-  var substream = this._trackerStreamMultiplexer.stream(presenceChannelName);
+  let substream = this._trackerStreamMultiplexer.stream(presenceChannelName);
   this.channelPresenceTrackerStreams[channelName] = true;
   (async () => {
     let channel = this.socket.channel(presenceChannelName)

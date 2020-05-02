@@ -147,6 +147,9 @@ SCStatelessPresence.prototype._cleanupSubscribers = function (socket, channelNam
   if (!authToken) {
     return;
   }
+  if (!authToken.username) {
+    return;
+  }
   let username = authToken.username;
 
   let presenceChannelName = this._getPresenceChannelName(channelName);
